@@ -1,5 +1,6 @@
 #include "Document.h"
 #include <QFileInfo>
+#include <QImage>
 #include <QtMath>
 #include <poppler/qt6/poppler-qt6.h>
 
@@ -99,4 +100,19 @@ QString Document::detectPaperSize(const QSizeF &sizeMM) {
     return "A3 (Landscape)";
 
   return "Custom";
+}
+
+QImage Document::renderPage(int pageNumber, double dpi) const {
+  if (!isLoaded())
+    return QImage();
+
+  if (pageNumber < 0 || pageNumber >= pageCount())
+    return QImage();
+
+  auto page = m_document->page(pageNumber);
+  if (!page)
+    return QImage();
+
+  QImage image = page->renderToImage(dpi, dpi);
+  return image;
 }
