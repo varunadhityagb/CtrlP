@@ -137,12 +137,18 @@ void MainWindow::renderAllPages() {
   if (!m_document.isLoaded())
     return;
 
+  for (QLabel *label : m_pageLabels) {
+    label->clear();
+  }
+  m_pageLabels.clear();
+
   QLayoutItem *item;
   while ((item = m_contentLayout->takeAt(0)) != nullptr) {
     delete item->widget();
     delete item;
   }
 
+  QApplication::processEvents();
   m_pageLabels.clear();
 
   int pageCount = m_document.pageCount();
@@ -169,8 +175,7 @@ void MainWindow::renderAllPages() {
         separator->setStyleSheet(
             QString("background-color: %1;").arg(m_pageBoundaryColor.name()));
         separator->setFixedHeight(1);
-        separator->setMaximumWidth(image.width() // Match page width
-        );
+        separator->setMaximumWidth(image.width());
         m_contentLayout->addWidget(separator);
       }
 
@@ -191,7 +196,7 @@ void MainWindow::scrollBy(int pixels) {
 }
 
 void MainWindow::jumpToPage(int pageNumber) {
-  if (pageNumber > 0 || pageNumber >= m_document.pageCount())
+  if (pageNumber < 0 || pageNumber >= m_document.pageCount())
     return;
 
   if (pageNumber >= m_pageLabels.size())
