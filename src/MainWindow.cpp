@@ -20,10 +20,18 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_currentPage(0), m_dpi(150.0), m_pageGap(20),
       m_scrollAmount(100), m_showPageBoundaries(true),
       m_pageBoundaryColor(68, 68, 68), m_scrollArea(nullptr),
-      m_contentWidget(nullptr), m_contentLayout(nullptr) {
+      m_contentWidget(nullptr), m_contentLayout(nullptr), m_InputState(NORMAL),
+      m_numberBuffer(""), m_commandInput(nullptr) {
   setWindowTitle("CtrlP");
   resize(800, 600);
   setupUI();
+
+  m_keySequenceTimer = new QTimer(this);
+  m_keySequenceTimer->setSingleShot(true);
+  m_keySequenceTimer->setInterval(1000);
+  connect(m_keySequenceTimer, &QTimer::timeout, this,
+          &MainWindow::resetKeySequence);
+
   updateStatusBar();
 }
 
@@ -45,19 +53,74 @@ void MainWindow::setupUI() {
 
   setCentralWidget(m_scrollArea);
 
+  m_commandInput = new QLineEdit(this);
+  m_commandInput->setStyleSheet("QLineEdit {"
+                                "  background-color: #222222;"
+                                "  color: white;"
+                                "  border: none;"
+                                "  padding: 2px 5px;"
+                                "  font-family: monospace;"
+                                "}");
+  m_commandInput->setVisible(false);
+
+  statusBar()->addPermanentWidget(m_commandInput);
+
+  connect(m_commandInput, &QLineEdit::returnPressed, [this]() {
+    executeCommand(m_commandInput->text());
+    exitCommandMode();
+  });
+
   statusBar()->showMessage("No document loaded");
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event) {
 
-  bool shift = event->modifiers() & Qt::ShiftModifier;
+  if (m_InputState == COMMAND_MODE) {
+    if (event->key() == Qt::Key_Escape)
+      exitCommandMode();
+    return;
+  }
 
-  switch (event->key()) {
+  bool shift = event->modifiers() & Qt::ShiftModifier;
+  int key = event->key();
+
+  if (key >= Qt::Key_0 && key <= Qt::Key_9) {
+    int digit = key - Qt::Key_0;
+    handleNumberKey(digit);
+    return;
+  }
+
+  switch (key) {
   case Qt::Key_Q:
     QApplication::quit();
     break;
 
+  case Qt::Key_G:
+    if (shift) {
+      handleGotoCommand();
+    } else {
+      if (m_InputState == AWAITING_X) {
+        jumpToPage(0);
+        resetKeySequence();
+      } else {
+        m_InputState = AWAITING_X;
+        statusBar()->showMessage("g", 1000);
+        m_keySequenceTimer->start();
+      }
+    }
+    break;
+
+  case Qt::Key_Colon:
+    enterCommandMode();
+    break;
+
+  case Qt::Key_Escape:
+    resetKeySequence();
+    updateStatusBar();
+    break;
+
   case Qt::Key_J:
+    resetKeySequence();
     if (shift)
       jumpToPage(m_currentPage + 1);
     else
@@ -65,6 +128,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
     break;
 
   case Qt::Key_K:
+    resetKeySequence();
     if (shift)
       jumpToPage(m_currentPage - 1);
     else
@@ -73,7 +137,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
     break;
 
   case Qt::Key_Z:
-  case Qt::Key_Zoom:
+    resetKeySequence();
     if (shift)
       zoomOut();
     else
@@ -82,14 +146,17 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
     break;
 
   case Qt::Key_W:
+    resetKeySequence();
     fitToWidth();
     break;
 
   case Qt::Key_H:
+    resetKeySequence();
     fitToHeight();
     break;
 
   default:
+    resetKeySequence();
     QMainWindow::keyPressEvent(event);
   }
 }
@@ -137,18 +204,12 @@ void MainWindow::renderAllPages() {
   if (!m_document.isLoaded())
     return;
 
-  for (QLabel *label : m_pageLabels) {
-    label->clear();
-  }
-  m_pageLabels.clear();
-
   QLayoutItem *item;
   while ((item = m_contentLayout->takeAt(0)) != nullptr) {
     delete item->widget();
     delete item;
   }
 
-  QApplication::processEvents();
   m_pageLabels.clear();
 
   int pageCount = m_document.pageCount();
@@ -271,4 +332,67 @@ int MainWindow::getCurrentVisiblePage() {
   }
 
   return closestPage;
+}
+
+void MainWindow::handleNumberKey(int digit) {
+  m_numberBuffer += QString::number(digit);
+
+  statusBar()->showMessage(":" + m_numberBuffer, 1000);
+
+  m_keySequenceTimer->start();
+}
+
+void MainWindow::handleGotoCommand() {
+  if (m_numberBuffer.isEmpty())
+    jumpToPage(m_document.pageCount() - 1);
+  else {
+    bool ok;
+    int pageNum = m_numberBuffer.toInt(&ok);
+    if (ok && pageNum > 0)
+      jumpToPage(pageNum - 1);
+  }
+
+  resetKeySequence();
+}
+
+void MainWindow::enterCommandMode() {
+  m_InputState = COMMAND_MODE;
+  m_commandInput->clear();
+  m_commandInput->setText(":");
+  m_commandInput->setVisible(true);
+  m_commandInput->setFocus();
+  m_commandInput->setCursorPosition(1);
+}
+
+void MainWindow::exitCommandMode() {
+  m_InputState = NORMAL;
+  m_commandInput->setVisible(false);
+  m_commandInput->clear();
+  setFocus();
+  updateStatusBar();
+}
+
+void MainWindow::executeCommand(const QString &cmd) {
+  QString command = cmd.trimmed();
+
+  if (command.startsWith(":"))
+    command = command.mid(1);
+
+  if (command.isEmpty())
+    return;
+
+  bool ok;
+  int pageNum = command.toInt(&ok);
+  if (ok && pageNum > 0) {
+    jumpToPage(pageNum - 1);
+    return;
+  }
+
+  statusBar()->showMessage("Unknown command: " + command, 2000);
+}
+
+void MainWindow::resetKeySequence() {
+  m_InputState = NORMAL;
+  m_numberBuffer.clear();
+  m_keySequenceTimer->stop();
 }

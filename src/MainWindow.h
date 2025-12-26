@@ -5,8 +5,10 @@
 #include <QColor>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMainWindow>
 #include <QScrollArea>
+#include <QTimer>
 #include <QVBoxLayout>
 
 class MainWindow : public QMainWindow {
@@ -23,6 +25,7 @@ private:
   void setupUI();
   void updateStatusBar();
   void renderAllPages();
+
   void scrollBy(int pixels);
   void jumpToPage(int pageNumber);
   void zoomIn();
@@ -30,6 +33,15 @@ private:
   void fitToWidth();
   void fitToHeight();
   int getCurrentVisiblePage();
+
+  void handleNumberKey(int digit);
+  void handleGotoCommand();
+  void enterCommandMode();
+  void exitCommandMode();
+  void executeCommand(const QString &cmd);
+  void resetKeySequence();
+
+  enum InputState { NORMAL, AWAITING_X, COMMAND_MODE };
 
   Document m_document;
   int m_currentPage;
@@ -44,6 +56,11 @@ private:
   QWidget *m_contentWidget;
   QVBoxLayout *m_contentLayout;
   QList<QLabel *> m_pageLabels;
+
+  InputState m_InputState;
+  QString m_numberBuffer;
+  QTimer *m_keySequenceTimer;
+  QLineEdit *m_commandInput;
 };
 
 #endif // MAINWINDOW_H_
