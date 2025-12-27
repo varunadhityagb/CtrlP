@@ -20,6 +20,9 @@ add_executable(CtrlP
     src/MainWindow.h
     src/Document.cpp
     src/Document.h
+    src/PrintSettings.h
+    src/PageWidget.h
+    src/PageWidget.cpp
 )
 
 target_include_directories(CtrlP PRIVATE

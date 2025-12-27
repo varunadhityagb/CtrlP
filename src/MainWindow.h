@@ -2,6 +2,8 @@
 #define MAINWINDOW_H_
 
 #include "Document.h"
+#include "PageWidget.h"
+#include "PrintSettings.h"
 #include <QColor>
 #include <QKeyEvent>
 #include <QLabel>
@@ -17,6 +19,7 @@ class MainWindow : public QMainWindow {
 public:
   MainWindow(QWidget *parent = nullptr);
   bool loadDocument(const QString &filePath);
+  const PrintSettings &printSettings() const { return m_printSettings; }
 
 protected:
   void keyPressEvent(QKeyEvent *event) override;
@@ -40,6 +43,11 @@ private:
   void executeCommand(const QString &cmd);
   void resetKeySequence();
 
+  void cycleMargniPreset();
+  void cycleDuplexMode();
+  void toggleColorMode();
+  void cycleScaleMode();
+
   enum InputState { NORMAL, AWAITING_G, COMMAND_MODE };
 
   Document m_document;
@@ -54,12 +62,14 @@ private:
   QScrollArea *m_scrollArea;
   QWidget *m_contentWidget;
   QVBoxLayout *m_contentLayout;
-  QList<QLabel *> m_pageLabels;
+  QList<PageWidget *> m_pageWidgets;
 
   InputState m_InputState;
   QString m_numberBuffer;
   QTimer *m_keySequenceTimer;
   QLineEdit *m_commandInput;
+
+  PrintSettings m_printSettings;
 };
 
 #endif // MAINWINDOW_H_

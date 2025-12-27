@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "PrintSettings.h"
 #include <QApplication>
 #include <QBoxLayout>
 #include <QFileInfo>
@@ -19,7 +20,7 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_currentPage(0), m_dpi(150.0), m_pageGap(20),
       m_scrollAmount(100), m_showPageBoundaries(true),
-      m_pageBoundaryColor(68, 68, 68), m_scrollArea(nullptr),
+      m_pageBoundaryColor(68, 68, 68), m_printSettings(), m_scrollArea(nullptr),
       m_contentWidget(nullptr), m_contentLayout(nullptr), m_InputState(NORMAL),
       m_numberBuffer(""), m_commandInput(nullptr) {
   setWindowTitle("CtrlP");
@@ -186,6 +187,26 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
     fitToHeight();
     break;
 
+  case Qt::Key_M:
+    resetKeySequence();
+    cycleMargniPreset();
+    break;
+
+  case Qt::Key_D:
+    resetKeySequence();
+    cycleDuplexMode();
+    break;
+
+  case Qt::Key_C:
+    resetKeySequence();
+    toggleColorMode();
+    break;
+
+  case Qt::Key_S:
+    resetKeySequence();
+    cycleScaleMode();
+    break;
+
   default:
     if (event->modifiers() == Qt::NoModifier || key == Qt::Key_Shift ||
         key == Qt::Key_Control || key == Qt::Key_Alt || key == Qt::Key_Meta) {
@@ -246,7 +267,7 @@ void MainWindow::renderAllPages() {
     delete item;
   }
 
-  m_pageLabels.clear();
+  m_pageWidgets.clear();
 
   int pageCount = m_document.pageCount();
 
@@ -256,12 +277,18 @@ void MainWindow::renderAllPages() {
     if (image.isNull())
       continue;
 
-    QLabel *pageLabel = new QLabel();
-    pageLabel->setPixmap(QPixmap::fromImage(image));
-    pageLabel->setAlignment(Qt::AlignCenter);
+    if (!m_printSettings.colorMode) {
+      image = image.convertToFormat(QImage::Format_Grayscale8);
+    }
 
-    m_contentLayout->addWidget(pageLabel);
-    m_pageLabels.append(pageLabel);
+    PageWidget *pageWidget = new PageWidget();
+    pageWidget->setPagePixmap(QPixmap::fromImage(image));
+    pageWidget->setPrintSettings(&m_printSettings);
+    pageWidget->setDPI(m_dpi);
+    pageWidget->setPageNumber(i);
+
+    m_contentLayout->addWidget(pageWidget);
+    m_pageWidgets.append(pageWidget);
 
     if (i < pageCount - 1) {
       m_contentLayout->addSpacing(m_pageGap);
@@ -296,11 +323,11 @@ void MainWindow::jumpToPage(int pageNumber) {
   if (pageNumber < 0 || pageNumber >= m_document.pageCount())
     return;
 
-  if (pageNumber >= m_pageLabels.size())
+  if (pageNumber >= m_pageWidgets.size())
     return;
 
-  QLabel *targetLabel = m_pageLabels[pageNumber];
-  m_scrollArea->ensureWidgetVisible(targetLabel, 0, 0);
+  PageWidget *targetWidget = m_pageWidgets[pageNumber];
+  m_scrollArea->ensureWidgetVisible(targetWidget, 0, 0);
 
   m_currentPage = pageNumber;
   updateStatusBar();
@@ -344,22 +371,21 @@ void MainWindow::fitToHeight() {
 }
 
 int MainWindow::getCurrentVisiblePage() {
-  if (!m_document.isLoaded() || m_pageLabels.isEmpty())
+  if (!m_document.isLoaded() || m_pageWidgets.isEmpty())
     return 0;
 
   int scrollY = m_scrollArea->verticalScrollBar()->value();
-  int viewportTop = scrollY;
   int viewportCenter = scrollY + m_scrollArea->viewport()->height() / 2;
 
   int closestPage = 0;
   int minDistance = INT_MAX;
 
-  for (int i = 0; i < m_pageLabels.size(); i++) {
-    QLabel *label = m_pageLabels[i];
-    int labelTop = label->y();
-    int labelCenter = labelTop + label->height() / 2;
+  for (int i = 0; i < m_pageWidgets.size(); i++) {
+    PageWidget *widget = m_pageWidgets[i];
+    int widgetTop = widget->y();
+    int widgetCenter = widgetTop + widget->height() / 2;
 
-    int distance = qAbs(labelCenter - viewportCenter);
+    int distance = qAbs(widgetCenter - viewportCenter);
 
     if (distance < minDistance) {
       minDistance = distance;
@@ -418,4 +444,75 @@ void MainWindow::resetKeySequence() {
   m_InputState = NORMAL;
   m_numberBuffer.clear();
   m_keySequenceTimer->stop();
+}
+
+void MainWindow::cycleMargniPreset() {
+  QString current = m_printSettings.marginPresetName();
+
+  if (current == "None")
+    m_printSettings.margins = PrintSettings::marginPresetMinimal();
+  else if (current == "Minimal")
+    m_printSettings.margins = PrintSettings::marginPresetNormal();
+  else if (current == "Normal")
+    m_printSettings.margins = PrintSettings::marginPresetComfortable();
+  else if (current == "Comfortable")
+    m_printSettings.margins = PrintSettings::marginPresetWide();
+  else
+    m_printSettings.margins = PrintSettings::marginPresetNone();
+
+  for (PageWidget *widget : m_pageWidgets)
+    widget->update();
+
+  statusBar()->showMessage(
+      QString("Margins: %1").arg(m_printSettings.marginPresetName()), 2000);
+}
+
+void MainWindow::cycleDuplexMode() {
+  switch (m_printSettings.duplexMode) {
+  case PrintSettings::Simplex:
+    m_printSettings.duplexMode = PrintSettings::DuplexLongEdge;
+    break;
+  case PrintSettings::DuplexLongEdge:
+    m_printSettings.duplexMode = PrintSettings::DuplexShortEdge;
+    break;
+  case PrintSettings::DuplexShortEdge:
+    m_printSettings.duplexMode = PrintSettings::Simplex;
+    break;
+  }
+
+  for (PageWidget *widget : m_pageWidgets)
+    widget->update();
+
+  statusBar()->showMessage(
+      QString("Duplex: %1").arg(m_printSettings.duplexModeName()), 2000);
+}
+
+void MainWindow::toggleColorMode() {
+  m_printSettings.colorMode = !m_printSettings.colorMode;
+
+  renderAllPages();
+
+  statusBar()->showMessage(
+      m_printSettings.colorMode ? "Color: On" : "Color: Off (Grayscale)", 2000);
+}
+
+void MainWindow::cycleScaleMode() {
+  switch (m_printSettings.scaleMode) {
+  case PrintSettings::FitToPage:
+    m_printSettings.scaleMode = PrintSettings::ActualSize;
+    break;
+  case PrintSettings::ActualSize:
+    m_printSettings.scaleMode = PrintSettings::FitToPage;
+    break;
+  case PrintSettings::CustomPercent:
+    // Not implementing custom percent UI yet
+    m_printSettings.scaleMode = PrintSettings::FitToPage;
+    break;
+  }
+
+  for (PageWidget *widget : m_pageWidgets)
+    widget->update();
+
+  statusBar()->showMessage(
+      QString("Scale: %1").arg(m_printSettings.scaleModeName()), 2000);
 }
