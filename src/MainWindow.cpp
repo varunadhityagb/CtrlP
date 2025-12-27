@@ -74,13 +74,13 @@ void MainWindow::setupUI() {
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event) {
-
   if (m_InputState == COMMAND_MODE) {
     if (event->key() == Qt::Key_Escape)
       exitCommandMode();
     return;
   }
 
+  m_keySequenceTimer->stop();
   bool shift = event->modifiers() & Qt::ShiftModifier;
   int key = event->key();
 
@@ -97,13 +97,13 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
 
   case Qt::Key_G:
     if (shift) {
-      handleGotoCommand();
+      jumpToPage(m_document.pageCount() - 1);
     } else {
-      if (m_InputState == AWAITING_X) {
+      if (m_InputState == AWAITING_G) {
         jumpToPage(0);
         resetKeySequence();
       } else {
-        m_InputState = AWAITING_X;
+        m_InputState = AWAITING_G;
         statusBar()->showMessage("g", 1000);
         m_keySequenceTimer->start();
       }
@@ -120,20 +120,52 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
     break;
 
   case Qt::Key_J:
-    resetKeySequence();
-    if (shift)
-      jumpToPage(m_currentPage + 1);
-    else
-      scrollBy(m_scrollAmount);
+    if (shift) {
+      int count = 1;
+      if (!m_numberBuffer.isEmpty()) {
+        bool ok;
+        count = m_numberBuffer.toInt(&ok);
+        if (!ok || count <= 0)
+          count = 1;
+      }
+      jumpToPage(m_currentPage + count);
+    } else {
+      // j: Scroll down (with optional multiplier)
+      int count = 1;
+      if (!m_numberBuffer.isEmpty()) {
+        bool ok;
+        count = m_numberBuffer.toInt(&ok);
+        if (!ok || count <= 0)
+          count = 1;
+      }
+      scrollBy(m_scrollAmount * count);
+    }
+    resetKeySequence(); // Clear buffer AFTER using it
     break;
 
   case Qt::Key_K:
-    resetKeySequence();
-    if (shift)
-      jumpToPage(m_currentPage - 1);
-    else
-      scrollBy(-m_scrollAmount);
-
+    if (shift) {
+      // Shift+K: Previous page (with optional multiplier)
+      int count = 1;
+      if (!m_numberBuffer.isEmpty()) {
+        bool ok;
+        count = m_numberBuffer.toInt(&ok);
+        if (!ok || count <= 0)
+          count = 1;
+      }
+      jumpToPage(m_currentPage - count);
+    } else {
+      // k: Scroll up (with optional multiplier)
+      int count = 1;
+      if (!m_numberBuffer.isEmpty()) {
+        bool ok;
+        count = m_numberBuffer.toInt(&ok);
+        if (!ok || count <= 0)
+          count = 1;
+      }
+      scrollBy(-m_scrollAmount * count);
+    }
+    resetKeySequence(); // Clear buffer AFTER using it
     break;
 
   case Qt::Key_Z:
@@ -142,7 +174,6 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
       zoomOut();
     else
       zoomIn();
-
     break;
 
   case Qt::Key_W:
@@ -156,6 +187,11 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
     break;
 
   default:
+    if (event->modifiers() == Qt::NoModifier || key == Qt::Key_Shift ||
+        key == Qt::Key_Control || key == Qt::Key_Alt || key == Qt::Key_Meta) {
+      QMainWindow::keyPressEvent(event);
+      break;
+    }
     resetKeySequence();
     QMainWindow::keyPressEvent(event);
   }
@@ -340,19 +376,6 @@ void MainWindow::handleNumberKey(int digit) {
   statusBar()->showMessage(":" + m_numberBuffer, 1000);
 
   m_keySequenceTimer->start();
-}
-
-void MainWindow::handleGotoCommand() {
-  if (m_numberBuffer.isEmpty())
-    jumpToPage(m_document.pageCount() - 1);
-  else {
-    bool ok;
-    int pageNum = m_numberBuffer.toInt(&ok);
-    if (ok && pageNum > 0)
-      jumpToPage(pageNum - 1);
-  }
-
-  resetKeySequence();
 }
 
 void MainWindow::enterCommandMode() {

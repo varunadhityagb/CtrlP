@@ -35,13 +35,12 @@ private:
   int getCurrentVisiblePage();
 
   void handleNumberKey(int digit);
-  void handleGotoCommand();
   void enterCommandMode();
   void exitCommandMode();
   void executeCommand(const QString &cmd);
   void resetKeySequence();
 
-  enum InputState { NORMAL, AWAITING_X, COMMAND_MODE };
+  enum InputState { NORMAL, AWAITING_G, COMMAND_MODE };
 
   Document m_document;
   int m_currentPage;
